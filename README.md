@@ -13,12 +13,18 @@ One extension, one command, one tool. No skills, shell wrappers, or replacement 
 Requires **interactive Pi 0.85.1 or newer** (`@earendil-works/pi-coding-agent`); tested against 0.85.1. Earlier Pi versions may not rebuild cwd-bound services when switching sessions.
 
 ```sh
+pi install npm:pi-petrroll
+```
+
+Or install directly from GitHub:
+
+```sh
 pi install git:github.com/petrroll/pi-petrroll
 ```
 
 Run `/reload` in an existing Pi session, or start Pi. Install globally (the default), so the extension remains available when switching projects.
 
-For local development, use this checkout instead of the GitHub install:
+For local development, use this checkout instead of the npm or GitHub install:
 
 ```sh
 pi install /absolute/path/to/pi-petrroll
@@ -68,6 +74,9 @@ Manual `/cd` switches without starting another model response; the agent tool re
 ### Safety and limitations
 
 - Interactive/TUI mode only. Print, JSON, RPC, and `--no-session` are deliberately unsupported in this first version.
+- Linux is tested locally and in Ubuntu CI. Windows is expected to work but has not been verified. For manual commands on Windows, prefer `/cd "C:/Users/you/worktree with spaces"`; double-quoted backslashes are interpreted as JSON escapes. Use `~/path`, not `~\path`. The agent tool handles quoting automatically.
+- Pi's session cwd changes, but Node's `process.cwd()` does not. Third-party extensions that use process-relative filesystem paths or spawn commands without an explicit cwd may still operate in the original directory. Pi's built-in tools and `pi.exec()` use the rebuilt session/extension cwd.
+- Switching does not recreate shell environment changes such as `direnv` or virtualenv activation, and does not move already-running background processes.
 - The session must already be saved. In a brand-new session, send a message first.
 - The agent should call `change_directory` **alone**, after worktree creation has completed. The tool requests early termination and the command waits for idle so completed tool results are included in the copy. If mixed with other tools, those calls still run in the **old** directory; the switch waits until the run settles.
 - Explicitly aborting a pending tool handoff prevents the switch. Invalid paths and concurrent requests are rejected.
