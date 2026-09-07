@@ -1,0 +1,55 @@
+{
+  "name": "pi-petrroll",
+  "version": "0.1.0",
+  "description": "Small, focused Pi extensions by petrroll: change projects without leaving your session.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Petr Houška (petrroll)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/petrroll/pi-petrroll.git"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "extensions",
+    "worktree"
+  ],
+  "files": [
+    "extensions",
+    "LICENSE",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.9.0"
+  }
+}

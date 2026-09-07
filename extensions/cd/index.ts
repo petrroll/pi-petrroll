@@ -1,0 +1,148 @@
+import { existsSync, realpathSync, statSync, unlinkSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
+import {
+  SessionManager,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+
+/** The entire argument is a path, not a shell expression. */
+export function resolveDirectory(argument: string, cwd: string): string {
+  let path = argument.trim();
+  if (path.startsWith('"')) {
+    path = JSON.parse(path) as string;
+    if (typeof path !== "string") throw new Error("Expected a directory path.");
+  } else if (path.startsWith("'") && path.endsWith("'")) {
+    path = path.slice(1, -1);
+  }
+  if (!path || /[\x00-\x1f\x7f]/.test(path)) {
+    throw new Error("Provide a non-empty directory path without control characters.");
+  }
+  if (path.startsWith("@")) path = path.slice(1);
+  if (path === "~") path = homedir();
+  else if (path.startsWith("~/")) path = resolve(homedir(), path.slice(2));
+  else if (path.startsWith("~")) throw new Error("Use ~ or ~/path, not ~username.");
+  const target = realpathSync(resolve(cwd, path));
+  if (!statSync(target).isDirectory()) throw new Error(`Not a directory: ${target}`);
+  return target;
+}
+
+function requireSavedSession(ctx: ExtensionContext): string {
+  // Interactive mode owns the asynchronous command handoff and runtime rebinding.
+  if (ctx.mode !== "tui") throw new Error("Changing directory currently requires interactive Pi.");
+  const file = ctx.sessionManager.getSessionFile();
+  if (!file || !existsSync(file)) {
+    throw new Error("This session is not saved yet. Send a message first; --no-session is not supported.");
+  }
+  return file;
+}
+
+export default function cdExtension(pi: ExtensionAPI) {
+  let busy = false;
+  let toolRequest: { argument: string; signal: AbortSignal | undefined } | undefined;
+
+  pi.registerCommand("cd", {
+    description: "Copy this session into another directory and switch there: /cd <path>",
+    handler: async (args, ctx) => {
+      const request = toolRequest?.argument === args ? toolRequest : undefined;
+      if (request) toolRequest = undefined;
+      if (busy) throw new Error("A directory change is already pending.");
+      if (!args.trim()) {
+        ctx.ui.notify(`Current directory: ${ctx.cwd}\nUsage: /cd <path>`, "info");
+        return;
+      }
+      busy = true;
+      try {
+        // Commands dispatch immediately, even with deliverAs: followUp. Waiting
+        // here (never inside tool.execute) lets all tool results reach disk first.
+        await ctx.waitForIdle();
+        request?.signal?.throwIfAborted();
+        const source = requireSavedSession(ctx);
+        const target = resolveDirectory(args, ctx.cwd);
+        if (target === realpathSync(ctx.cwd)) {
+          ctx.ui.notify(`Already in ${target}`, "info");
+          return;
+        }
+
+        const copy = SessionManager.forkFrom(source, target);
+        // forkFrom copies the whole tree but opens its last entry. Preserve the
+        // actual selected leaf, including when the user navigated with /tree.
+        const leaf = ctx.sessionManager.getLeafId();
+        if (leaf) copy.branch(leaf);
+        else copy.resetLeaf();
+        copy.appendCustomMessageEntry(
+          "pi-petrroll:cd",
+          `Working directory changed from ${ctx.cwd} to ${target}. ` +
+            "Relative paths now refer to the new directory. Follow the newly loaded project instructions.",
+          true,
+          { from: ctx.cwd, to: target, parentSession: source },
+        );
+        const destination = copy.getSessionFile()!;
+        // Do not use captured pi/ctx in withSession: the old runtime is invalid.
+        const result = await ctx.switchSession(destination, {
+          withSession: async (fresh) => {
+            fresh.ui.notify(`Changed directory to ${fresh.cwd}`, "info");
+            if (request) {
+              await fresh.sendUserMessage(
+                "The requested directory change has completed. Continue the outstanding task in this directory. " +
+                  "If no work remains, briefly confirm the change.",
+              );
+            }
+          },
+        });
+        if (result.cancelled) {
+          unlinkSync(destination);
+          pi.sendMessage({
+            customType: "pi-petrroll:cd",
+            content: "Directory change cancelled. The original session and working directory are unchanged.",
+            display: true,
+          });
+          ctx.ui.notify("Directory change cancelled.", "warning");
+        }
+      } finally {
+        // Local state only; session-bound pi/ctx may now be stale.
+        busy = false;
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "change_directory",
+    label: "Change directory",
+    description:
+      "Copy the current saved session into an existing directory and switch Pi there, reloading tools and project context. " +
+      "Interactive mode only. The switch happens after the current run settles, then work resumes automatically. " +
+      "Create any git worktree with bash first. Call this tool alone, not in parallel with other tools; do not do more work in the old directory afterward.",
+    promptSnippet: "Switch Pi to another project/worktree while keeping conversation history",
+    promptGuidelines: [
+      "Use change_directory to move Pi into a newly created worktree or another project; bash cd does not change Pi's working directory.",
+      "Call change_directory alone and let its handoff finish before doing further work.",
+    ],
+    parameters: Type.Object({
+      path: Type.String({ description: "Existing directory: absolute, relative to Pi's cwd, or ~/path" }),
+    }),
+    async execute(_id, { path }, signal, _onUpdate, ctx) {
+      signal?.throwIfAborted();
+      if (busy || toolRequest) throw new Error("A directory change is already pending.");
+      requireSavedSession(ctx);
+      const target = resolveDirectory(JSON.stringify(path), ctx.cwd);
+      if (target === realpathSync(ctx.cwd)) {
+        return { content: [{ type: "text", text: `Already in ${target}.` }], details: { cwd: target } };
+      }
+      const argument = JSON.stringify(target);
+      toolRequest = { argument, signal };
+      // Explicit expansion is essential: otherwise /cd is sent as text to the LLM.
+      pi.sendUserMessage(`/cd ${argument}`, { deliverAs: "followUp", expandPromptTemplates: true });
+      return {
+        content: [{
+          type: "text",
+          text: `Directory change to ${target} requested, not completed yet. End this run now; work will resume automatically after switching.`,
+        }],
+        details: { target, status: "pending" },
+        terminate: true,
+      };
+    },
+  });
+}
