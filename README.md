@@ -30,7 +30,23 @@ For local development, use this checkout instead of the npm or GitHub install:
 pi install /absolute/path/to/pi-petrroll
 ```
 
-Choose one installation source, not both. Use `pi config` to enable/disable individual extensions as this collection grows.
+Choose one installation source, not multiple.
+
+### Enable only what you need
+
+One package does **not** mean all extensions must be enabled. Run `pi config` to toggle each extension independently, or `pi config -l` for project-specific choices. Then `/reload` running sessions.
+
+All extensions load by default. To load only `cd`, including after future updates, use this package entry in `~/.pi/agent/settings.json`:
+
+```json
+{
+  "packages": [
+    { "source": "npm:pi-petrroll", "extensions": ["extensions/cd/index.ts"] }
+  ]
+}
+```
+
+Disabling `cd` disables both `/cd` and its `change_directory` tool.
 
 ## Change directory
 
