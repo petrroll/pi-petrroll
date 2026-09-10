@@ -5,12 +5,13 @@ Small, focused extensions for [Pi](https://pi.dev). MIT licensed.
 | Extension | Command | Agent tool |
 | --- | --- | --- |
 | [Change directory](#change-directory) | `/cd <path>` | `change_directory` |
+| [External costs](#external-costs) | — | `add_cost` |
 
-One extension, one command, one tool. No skills, shell wrappers, or replacement built-in tools.
+Independent, focused extensions. No skills, shell wrappers, or replacement built-in tools.
 
 ## Install
 
-Requires **interactive Pi 0.85.1 or newer** (`@earendil-works/pi-coding-agent`); tested against 0.85.1. Earlier Pi versions may not rebuild cwd-bound services when switching sessions.
+Requires **Pi 0.85.1 or newer** (`@earendil-works/pi-coding-agent`); tested against 0.85.1. Change directory requires interactive mode; external cost recording works in all modes. Earlier Pi versions may not rebuild cwd-bound services when switching sessions.
 
 ```sh
 pi install npm:pi-petrroll
@@ -46,7 +47,7 @@ All extensions load by default. To load only `cd`, including after future update
 }
 ```
 
-Disabling `cd` disables both `/cd` and its `change_directory` tool.
+Disabling `cd` disables both `/cd` and its `change_directory` tool. Disabling `cost` disables `add_cost`. To load only cost recording, use `"extensions": ["extensions/cost/index.ts"]` in the package entry above.
 
 ## Change directory
 
@@ -100,6 +101,27 @@ Manual `/cd` switches without starting another model response; the agent tool re
 - The copied history can contain references to the old project. A visible context message records the change, and the new system prompt contains the destination's instructions.
 - Switching reloads project extensions according to Pi's trust policy. Install only code you trust.
 
+## External costs
+
+After launching a subagent with the ordinary `bash` tool, Pi can call `add_cost` to include the subagent's reported cost in the **current session's native cost total**:
+
+```json
+{
+  "amount": 0.0375,
+  "reason": "Bash-launched review subagent, run review-123"
+}
+```
+
+- `amount` is an additional, finite, non-negative cost in **USD**, not cents. Zero is allowed.
+- `reason` is a required, non-blank description (up to 1000 characters), saved with the tool result for an audit trail.
+- Costs appear in Pi's footer, `/session`, and RPC session statistics. Pi stores them as tool-result usage, so they survive reload/resume and compaction without inventing token counts or changing the parent model's usage.
+- Works in interactive, print, JSON, and RPC modes, including in-memory sessions. `--no-session` costs exist only for that process.
+- This is accounting only: the tool does not launch anything, inspect subagent output, estimate pricing, or charge money. The agent must obtain the cost from the external run first.
+
+**Every successful call is additive; there is no deduplication.** Report each external cost once. For a continued subagent, report only the new, unrecorded cost—not its cumulative lifetime total. Do not report parent-session model costs or nested usage already returned by another tool. If the external cost is unknown, do not guess.
+
+Pi's totals include all entries in the session file, including abandoned branches. Forked or copied sessions inherit costs present in their copied history; a new empty session starts at zero. No session files or Pi internals are patched.
+
 ## Development
 
 ```sh
@@ -108,15 +130,17 @@ npm run check
 npm test
 ```
 
-Tests cover path handling, copy/branch preservation, cancellation, aborts, concurrency, and a real Pi runtime handoff with a fake model stream. The runtime test verifies that tool results are copied, `read` and `bash` use the new cwd, destination `AGENTS.md` replaces source context, and the agent continues. Tests do not call a model API or use your credentials.
+Tests cover cost validation, native cost accumulation, persistence/resume, compaction, path handling, copy/branch preservation, cancellation, aborts, concurrency, and a real Pi runtime handoff with a fake model stream. The runtime test verifies that tool results are copied, `read` and `bash` use the new cwd, destination `AGENTS.md` replaces source context, and the agent continues. Tests do not call a model API or use your credentials.
 
 ```text
 extensions/
   cd/
     index.ts
-  # Add another-extension/index.ts here.
+  cost/
+    index.ts
 tests/
   cd.test.ts
+  cost.test.ts
   runtime.test.ts
 ```
 

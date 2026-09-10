@@ -1,7 +1,7 @@
 {
   "name": "pi-petrroll",
-  "version": "0.1.1",
-  "description": "Small, focused Pi extensions by petrroll: change projects without leaving your session.",
+  "version": "0.2.0",
+  "description": "Small, focused Pi extensions by petrroll: switch projects and track external costs in your session.",
   "type": "module",
   "license": "MIT",
   "author": "Petr Houška (petrroll)",
