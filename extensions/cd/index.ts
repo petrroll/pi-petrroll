@@ -80,15 +80,27 @@ export default function cdExtension(pi: ExtensionAPI) {
           { from: ctx.cwd, to: target, parentSession: source },
         );
         const destination = copy.getSessionFile()!;
-        // Do not use captured pi/ctx in withSession: the old runtime is invalid.
+        let resume: (() => Promise<void>) | undefined;
         const result = await ctx.switchSession(destination, {
           withSession: async (fresh) => {
             fresh.ui.notify(`Changed directory to ${fresh.cwd}`, "info");
             if (request) {
-              await fresh.sendUserMessage(
-                "The requested directory change has completed. Continue the outstanding task in this directory. " +
-                  "If no work remains, briefly confirm the change.",
-              );
+              // Capture only the fresh context, not the invalidated pi/ctx.
+              resume = async () => {
+                try {
+                  await fresh.sendUserMessage(
+                    "The requested directory change has completed. Continue the outstanding task in this directory. " +
+                      "If no work remains, briefly confirm the change.",
+                    { deliverAs: "followUp" },
+                  );
+                } catch (error) {
+                  fresh.ui.notify(
+                    `Directory changed, but automatic continuation failed: ${error instanceof Error ? error.message : String(error)}. ` +
+                      'Send "continue" to resume.',
+                    "warning",
+                  );
+                }
+              };
             }
           },
         });
@@ -100,7 +112,12 @@ export default function cdExtension(pi: ExtensionAPI) {
             display: true,
           });
           ctx.ui.notify("Directory change cancelled.", "warning");
+          return;
         }
+        // sendUserMessage awaits the entire agent run. Do not run it inside
+        // withSession: the host must finish switching first, and prompt errors
+        // must not be treated as fatal failures to replace the runtime.
+        await resume?.();
       } finally {
         // Local state only; session-bound pi/ctx may now be stale.
         busy = false;

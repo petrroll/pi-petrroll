@@ -40,6 +40,7 @@ test("real Pi runtime: tool handoff persists results, rebuilds cwd and AGENTS.md
   const model = modelRuntime.getModel("anthropic", "claude-sonnet-4-5")!;
   assert.ok(model);
   let requestCount = 0;
+  let switching = false;
   let finish!: () => void;
   const completed = new Promise<void>((resolve) => { finish = resolve; });
   const errors: string[] = [];
@@ -61,6 +62,7 @@ test("real Pi runtime: tool handoff persists results, rebuilds cwd and AGENTS.md
     modelRuntime.streamSimple = () => {
       requestCount++;
       requests.push({ cwd, systemPrompt: result.session.systemPrompt });
+      assert.equal(switching, false, "model requests must not run inside session replacement");
       const message: AssistantMessage = {
         role: "assistant", api: "anthropic-messages", provider: "anthropic", model: model.id,
         content: requestCount === 1
@@ -92,7 +94,14 @@ test("real Pi runtime: tool handoff persists results, rebuilds cwd and AGENTS.md
       onError: (error) => { errors.push(error.error); finish(); },
       commandContextActions: {
         waitForIdle: () => session.waitForIdle(),
-        switchSession: (path, options) => runtime.switchSession(path, options),
+        switchSession: async (path, options) => {
+          switching = true;
+          try {
+            return await runtime.switchSession(path, options);
+          } finally {
+            switching = false;
+          }
+        },
         newSession: (options) => runtime.newSession(options),
         fork: (id, options) => runtime.fork(id, options),
         navigateTree: (id, options) => session.navigateTree(id, options),
@@ -115,6 +124,9 @@ test("real Pi runtime: tool handoff persists results, rebuilds cwd and AGENTS.md
     assert.deepEqual(errors, []);
     assert.equal(runtime.cwd, target);
     assert.equal(requestCount, 2, "no additional model call in the source directory");
+    const lastAssistant = [...runtime.session.messages].reverse().find((message) => message.role === "assistant");
+    assert.equal(lastAssistant?.stopReason, "stop");
+    assert.deepEqual(lastAssistant?.content, [{ type: "text", text: "Continued in the worktree." }]);
     assert.match(requests[0].systemPrompt, /SOURCE_CONTEXT_ONLY/);
     assert.match(requests[1].systemPrompt, /DESTINATION_CONTEXT_ONLY/);
     assert.doesNotMatch(requests[1].systemPrompt, /SOURCE_CONTEXT_ONLY/);

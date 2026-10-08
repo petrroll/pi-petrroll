@@ -11,7 +11,7 @@ Independent, focused extensions. No skills, shell wrappers, or replacement built
 
 ## Install
 
-Requires **Pi 0.85.1 or newer** (`@earendil-works/pi-coding-agent`); tested against 0.85.1. Change directory requires interactive mode; external cost recording works in all modes. Earlier Pi versions may not rebuild cwd-bound services when switching sessions.
+Requires **Pi 0.85.1 or newer** (`@earendil-works/pi-coding-agent`); tested against 0.85.1 and 1.1.0. Change directory requires interactive mode; external cost recording works in all modes. Earlier Pi versions may not rebuild cwd-bound services when switching sessions.
 
 ```sh
 pi install npm:pi-petrroll
@@ -78,7 +78,7 @@ No quit, terminal `cd`, restart, or cross-directory session-copy confirmation. *
 
 Bare `/cd` shows the current directory and usage. Relative paths use Pi's current cwd. `~`, `~/…`, single-quoted paths, JSON double-quoted paths, and symlinks are supported. Paths are not shell commands: no variable expansion, globbing, `~username`, or `cd -`.
 
-Manual `/cd` switches without starting another model response; the agent tool resumes automatically. An existing destination is required. The extension does not create directories or worktrees itself.
+Manual `/cd` switches without starting another model response; the agent tool resumes automatically **after session replacement has fully completed**. The tool intentionally ends the old run, but normally needs no manual `continue`. An existing destination is required. The extension does not create directories or worktrees itself.
 
 ### What changes
 
@@ -98,6 +98,7 @@ Manual `/cd` switches without starting another model response; the agent tool re
 - The agent should call `change_directory` **alone**, after worktree creation has completed. The tool requests early termination and the command waits for idle so completed tool results are included in the copy. If mixed with other tools, those calls still run in the **old** directory; the switch waits until the run settles.
 - Explicitly aborting a pending tool handoff prevents the switch. Invalid paths and concurrent requests are rejected.
 - A cancelled session switch removes the unused copy and keeps the original session. If Pi fails while rebuilding the replacement runtime, its normal fatal-error handling applies; the original and any created copy remain available for recovery.
+- If submitting the automatic continuation fails, the extension warns without treating the successful switch as a failure. Model errors and user aborts still follow Pi's normal behavior; the extension does not retry aborted runs. Send `continue` in the destination if needed.
 - The copied history can contain references to the old project. A visible context message records the change, and the new system prompt contains the destination's instructions.
 - Switching reloads project extensions according to Pi's trust policy. Install only code you trust.
 
@@ -130,7 +131,7 @@ npm run check
 npm test
 ```
 
-Tests cover cost validation, native cost accumulation, persistence/resume, compaction, path handling, copy/branch preservation, cancellation, aborts, concurrency, and a real Pi runtime handoff with a fake model stream. The runtime test verifies that tool results are copied, `read` and `bash` use the new cwd, destination `AGENTS.md` replaces source context, and the agent continues. Tests do not call a model API or use your credentials.
+Tests cover cost validation, native cost accumulation, persistence/resume, compaction, path handling, copy/branch preservation, cancellation, aborts, concurrency, and a real Pi runtime handoff with a fake model stream. The runtime test verifies that tool results are copied, `read` and `bash` use the new cwd, destination `AGENTS.md` replaces source context, and the agent continues only after the host finishes switching. Unit tests also cover continuation-submission failures without rolling back the successful switch. Tests do not call a model API or use your credentials.
 
 ```text
 extensions/

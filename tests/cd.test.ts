@@ -41,6 +41,8 @@ function fixture() {
   let switched: SessionManager | undefined;
   let resumed = false;
   let cancelled = false;
+  let switchFinished = false;
+  let continuationError: Error | undefined;
   let wait = async () => {};
   const context = {
     cwd: source,
@@ -54,8 +56,14 @@ function fixture() {
       await options.withSession({
         cwd: switched.getCwd(),
         ui: context.ui,
-        sendUserMessage: async () => { resumed = true; },
+        sendUserMessage: async (_content: string, options: { deliverAs?: string }) => {
+          assert.equal(switchFinished, true, "continuation must run after the host finishes switching");
+          assert.equal(options?.deliverAs, "followUp");
+          if (continuationError) throw continuationError;
+          resumed = true;
+        },
       });
+      switchFinished = true;
       return { cancelled: false };
     },
   } as unknown as ExtensionCommandContext;
@@ -83,6 +91,7 @@ function fixture() {
     switched: () => switched,
     resumed: () => resumed,
     cancel: () => { cancelled = true; },
+    failContinuation: (error: Error) => { continuationError = error; },
     waitFor: (promise: Promise<void>) => { wait = () => promise; },
   };
 }
@@ -137,6 +146,28 @@ test("tool handoff waits for idle and then resumes against the replacement", asy
   assert.equal(f.switched()?.getCwd(), f.target);
   assert.ok(f.switched()?.getEntries().some((entry) => entry.type === "message" && entry.message.role === "toolResult"));
   assert.equal(f.resumed(), true);
+});
+
+test("continuation failure keeps the successful switch and reports recovery on the fresh UI", async () => {
+  const f = fixture();
+  f.failContinuation(new Error("Provider unavailable"));
+  await f.execute(f.target);
+  await f.queued();
+  assert.equal(f.switched()?.getCwd(), f.target);
+  assert.equal(f.resumed(), false);
+  assert.match(f.notifications.at(-1)!, /Directory changed, but automatic continuation failed: Provider unavailable/);
+  assert.match(f.notifications.at(-1)!, /Send "continue"/);
+  assert.equal((await SessionManager.list(f.target)).length, 1);
+});
+
+test("cancelled tool handoff does not resume", async () => {
+  const f = fixture();
+  f.cancel();
+  await f.execute(f.target);
+  await f.queued();
+  assert.equal(f.resumed(), false);
+  assert.equal(f.switched(), undefined);
+  assert.equal((await SessionManager.list(f.target)).length, 0);
 });
 
 test("rejects concurrent directory changes", async () => {
