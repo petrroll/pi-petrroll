@@ -85,7 +85,7 @@ Manual `/cd` switches without starting another model response; the agent tool re
 - A new session ID and session file are created for the destination, using Pi's `SessionManager.forkFrom()`.
 - The original session is left in place. The full conversation tree is copied, and the currently selected branch is preserved.
 - Pi's native session replacement rebuilds built-in tools, the working-directory display, settings, extensions, skills, and project context such as `AGENTS.md` for the destination.
-- `pi -c` from the destination can continue the copied session. Copies use Pi's normal per-directory session storage (respecting `PI_CODING_AGENT_DIR`), not a source session's explicit `--session-dir` or `PI_CODING_AGENT_SESSION_DIR` override. If you use those overrides, resume the copy by its file path or remove the override.
+- `pi -c` from the destination can continue the copied session. Copies stay in the source session's storage: if it uses a custom session directory (`--session-dir`, `PI_CODING_AGENT_SESSION_DIR`, or the `sessionDir` setting), the copy is written there too, so `pi --session <id>` and `/resume` find it under the same override. Otherwise copies use Pi's normal per-directory storage for the destination (respecting `PI_CODING_AGENT_DIR`).
 - No `process.chdir()` trick, built-in tool overrides, or Pi internals are patched. Your parent terminal's working directory does **not** change.
 
 ### Safety and limitations

@@ -21,13 +21,15 @@ after(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function fixture() {
+function fixture({ defaultSessionDir = false } = {}) {
   const dir = mkdtempSync(join(root, "case-"));
   const source = join(dir, "source");
   const target = join(dir, "work tree;literal");
   mkdirSync(source);
   mkdirSync(target);
-  const session = SessionManager.create(source, join(dir, "source-sessions"));
+  // Default: a custom shared session dir, like --session-dir / PI_CODING_AGENT_SESSION_DIR.
+  const sessionDir = defaultSessionDir ? undefined : join(dir, "sessions");
+  const session = SessionManager.create(source, sessionDir);
   session.appendCustomMessageEntry("fixture", "Conversation to preserve", true);
   // Pi defers initial persistence until an assistant response, so explicitly
   // materialize our synthetic fixture without needing a provider.
@@ -52,7 +54,7 @@ function fixture() {
     waitForIdle: () => wait(),
     switchSession: async (path: string, options: { withSession: (ctx: unknown) => Promise<void> }) => {
       if (cancelled) return { cancelled: true };
-      switched = SessionManager.open(path);
+      switched = SessionManager.open(path, sessionDir);
       await options.withSession({
         cwd: switched.getCwd(),
         ui: context.ui,
@@ -84,7 +86,7 @@ function fixture() {
     },
   } as ExtensionAPI);
   return {
-    source, target, session, context, notifications, messages,
+    source, target, session, sessionDir, context, notifications, messages,
     command: (args: string) => handler(args, context),
     execute: (path: string, signal?: AbortSignal) => tool.execute("call-cd", { path }, signal, undefined, context),
     queued: () => queued,
@@ -128,7 +130,19 @@ test("/cd copies the full tree, preserves the selected leaf, leaves source uncha
   assert.equal(copy.getEntries().length, f.session.getEntries().length + 1);
   assert.equal(readFileSync(f.session.getSessionFile()!, "utf8"), before);
   assert.equal(f.resumed(), false);
-  assert.equal(SessionManager.continueRecent(f.target).getSessionId(), copy.getSessionId());
+  // The copy stays in the shared custom dir so `pi --session <id>` and /resume find it.
+  assert.equal(copy.getSessionDir(), f.sessionDir);
+  assert.deepEqual((await SessionManager.list(f.target, f.sessionDir)).map((s) => s.path), [copy.getSessionFile()]);
+  assert.equal(SessionManager.continueRecent(f.target, f.sessionDir).getSessionId(), copy.getSessionId());
+});
+
+test("/cd from a default per-project session dir uses the target's default dir", async () => {
+  const f = fixture({ defaultSessionDir: true });
+  await f.command(f.target);
+  const copy = f.switched()!;
+  assert.equal(copy.usesDefaultSessionDir(), true);
+  assert.notEqual(copy.getSessionDir(), f.session.getSessionDir());
+  assert.deepEqual((await SessionManager.list(f.target)).map((s) => s.path), [copy.getSessionFile()]);
 });
 
 test("tool handoff waits for idle and then resumes against the replacement", async () => {
@@ -157,7 +171,7 @@ test("continuation failure keeps the successful switch and reports recovery on t
   assert.equal(f.resumed(), false);
   assert.match(f.notifications.at(-1)!, /Directory changed, but automatic continuation failed: Provider unavailable/);
   assert.match(f.notifications.at(-1)!, /Send "continue"/);
-  assert.equal((await SessionManager.list(f.target)).length, 1);
+  assert.equal((await SessionManager.list(f.target, f.sessionDir)).length, 1);
 });
 
 test("cancelled tool handoff does not resume", async () => {
@@ -167,7 +181,7 @@ test("cancelled tool handoff does not resume", async () => {
   await f.queued();
   assert.equal(f.resumed(), false);
   assert.equal(f.switched(), undefined);
-  assert.equal((await SessionManager.list(f.target)).length, 0);
+  assert.equal((await SessionManager.list(f.target, f.sessionDir)).length, 0);
 });
 
 test("rejects concurrent directory changes", async () => {
@@ -206,7 +220,7 @@ test("cancellation removes only the new copy", async () => {
   f.cancel();
   await f.command(f.target);
   assert.equal(f.switched(), undefined);
-  assert.equal((await SessionManager.list(f.target)).length, 0);
+  assert.equal((await SessionManager.list(f.target, f.sessionDir)).length, 0);
   assert.equal(readdirSync(f.session.getSessionDir()).length, 1);
   assert.equal(f.messages.length, 1);
 });

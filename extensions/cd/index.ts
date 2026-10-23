@@ -39,6 +39,20 @@ function requireSavedSession(ctx: ExtensionContext): string {
   return file;
 }
 
+/**
+ * Where the copied session should live. A custom session dir (--session-dir,
+ * PI_CODING_AGENT_SESSION_DIR, or the sessionDir setting) is shared across
+ * projects and must be kept; otherwise resume/listing in that dir cannot find
+ * the copy. The default dir is per-cwd, so the copy gets the target's default.
+ */
+export function targetSessionDir(sessionManager: ExtensionContext["sessionManager"]): string | undefined {
+  // The live object is a full SessionManager; ReadonlySessionManager just does
+  // not expose this predicate in its type.
+  const usesDefault = (sessionManager as { usesDefaultSessionDir?: () => boolean }).usesDefaultSessionDir;
+  if (typeof usesDefault !== "function" || usesDefault.call(sessionManager)) return undefined;
+  return sessionManager.getSessionDir();
+}
+
 export default function cdExtension(pi: ExtensionAPI) {
   let busy = false;
   let toolRequest: { argument: string; signal: AbortSignal | undefined } | undefined;
@@ -66,7 +80,7 @@ export default function cdExtension(pi: ExtensionAPI) {
           return;
         }
 
-        const copy = SessionManager.forkFrom(source, target);
+        const copy = SessionManager.forkFrom(source, target, targetSessionDir(ctx.sessionManager));
         // forkFrom copies the whole tree but opens its last entry. Preserve the
         // actual selected leaf, including when the user navigated with /tree.
         const leaf = ctx.sessionManager.getLeafId();
