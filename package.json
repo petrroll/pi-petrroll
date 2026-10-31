@@ -1,6 +1,6 @@
 {
   "name": "pi-petrroll",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Small, focused Pi extensions by petrroll: switch projects, track external costs, and mark prompts on the scrollbar.",
   "type": "module",
   "license": "MIT",
