@@ -94,3 +94,13 @@ test("attaching twice replaces the earlier attachment", () => {
   second();
   assert.equal(view.scrollbarTrackStyle, originalTrack);
 });
+
+test("mark styles keep the thumb's width and keep reply marks visible on it", async () => {
+  const { createMarkStyles } = await import("../extensions/scrollbar-marks/index.ts");
+  const marks = createMarkStyles({ fg: (color, text) => `<${color}>${text}` });
+  const pi = (text: string) => `<thumb>${text}`;
+  assert.equal(marks.thumb("prompt", "┃", pi), "<accent>╋");
+  assert.equal(marks.thumb("reply", "┃", pi), "<thumb>╋");
+  assert.equal(marks.thumb("prompt", "█", pi), "<accent>█");
+  assert.equal(marks.thumb("reply", "█", pi), "<thumb>█");
+});

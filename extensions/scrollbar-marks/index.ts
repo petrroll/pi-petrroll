@@ -44,8 +44,13 @@ export function createMarkStyles(theme: ThemeLike): MarkStyles {
   const color = (kind: MarkKind) => (kind === "prompt" ? "accent" : "text");
   return {
     track: (kind) => theme.fg(color(kind), kind === "prompt" ? "━" : "─"),
-    // Pi's thumb already uses the text color, so only prompts stand out on it.
-    thumb: (kind, glyph) => (kind === "prompt" ? theme.fg("accent", "█") : undefined),
+    // Keep the thumb's width: the idle thumb "┃" becomes a heavy cross "╋" (the same tick as on the
+    // track, crossing the thumb); the active block thumb "█" cannot carry a tick, so only prompts
+    // recolor it. Replies stay in Pi's thumb color so the thumb never changes width or vanishes.
+    thumb: (kind, glyph, piThumb) => {
+      const cell = glyph === "┃" ? "╋" : glyph;
+      return kind === "prompt" ? theme.fg("accent", cell) : piThumb(cell);
+    },
   };
 }
 

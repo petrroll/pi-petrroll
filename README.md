@@ -128,8 +128,10 @@ Pi's totals include all entries in the session file, including abandoned branche
 
 Marks where your prompts and the assistant's replies start on the scrollbar at the right of Pi's fullscreen transcript, like an editor's overview ruler:
 
-- **Prompts**: `━` in the theme's accent color. A prompt under the thumb shows as an accent `█`.
-- **Replies** (assistant text): `─` in the text color. Replies under the thumb are not shown separately.
+- **Prompts**: `━` in the theme's accent color.
+- **Replies** (assistant text): `─` in the text color.
+
+Under the thumb, a mark crosses it as `╋` (accent for prompts, the thumb color for replies), so the thumb keeps its width. While you drag the scrollbar, Pi shows a solid `█` thumb. Prompts then recolor it to accent, and reply marks are hidden.
 
 Each mark sits at its proportional position in the transcript, so dragging or scrolling the thumb onto a mark brings that message into view. Prompts win when both fall on the same row. Tool output, thinking-only, and tool-call-only assistant turns are not marked.
 

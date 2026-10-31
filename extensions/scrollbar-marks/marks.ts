@@ -16,8 +16,11 @@ const ZONE_START = /^(?:\x1b\]133;[BC](?:\x07|\x1b\\))*\x1b\]133;A(?:\x07|\x1b\\
 export interface MarkStyles {
   /** Track cell (outside the thumb) for a row containing a mark. */
   track(kind: MarkKind): string;
-  /** Thumb cell for a row containing a mark; receives Pi's thumb glyph. Return undefined to keep Pi's thumb. */
-  thumb(kind: MarkKind, glyph: string): string | undefined;
+  /**
+   * Thumb cell for a row containing a mark; receives Pi's thumb glyph and Pi's thumb styler.
+   * Return undefined to keep Pi's thumb unchanged.
+   */
+  thumb(kind: MarkKind, glyph: string, piThumb: (text: string) => string): string | undefined;
 }
 
 /** Minimal structural view of `@earendil-works/pi-tui`'s ScrollView that this module relies on. */
@@ -115,7 +118,7 @@ export function attachScrollbarMarks(view: ScrollViewLike, options: AttachOption
   };
   view.scrollbarThumbStyle = (text) => {
     const kind = track[row++];
-    return (kind && options.styles.thumb(kind, text)) ?? originalThumb(text);
+    return (kind && options.styles.thumb(kind, text, originalThumb)) ?? originalThumb(text);
   };
 
   let restored = false;
