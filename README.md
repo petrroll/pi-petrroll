@@ -6,6 +6,7 @@ Small, focused extensions for [Pi](https://pi.dev). MIT licensed.
 | --- | --- | --- |
 | [Change directory](#change-directory) | `/cd <path>` | `change_directory` |
 | [External costs](#external-costs) | — | `add_cost` |
+| [Scrollbar marks](#scrollbar-marks) | — | — |
 
 Independent, focused extensions. No skills, shell wrappers, or replacement built-in tools.
 
@@ -47,7 +48,7 @@ All extensions load by default. To load only `cd`, including after future update
 }
 ```
 
-Disabling `cd` disables both `/cd` and its `change_directory` tool. Disabling `cost` disables `add_cost`. To load only cost recording, use `"extensions": ["extensions/cost/index.ts"]` in the package entry above.
+Disabling `cd` disables both `/cd` and its `change_directory` tool. Disabling `cost` disables `add_cost`. Disabling `scrollbar-marks` restores Pi's plain scrollbar. To load only cost recording, use `"extensions": ["extensions/cost/index.ts"]` in the package entry above.
 
 ## Change directory
 
@@ -123,6 +124,22 @@ After launching a subagent with the ordinary `bash` tool, Pi can call `add_cost`
 
 Pi's totals include all entries in the session file, including abandoned branches. Forked or copied sessions inherit costs present in their copied history; a new empty session starts at zero. No session files or Pi internals are patched.
 
+## Scrollbar marks
+
+Marks where your prompts and the assistant's replies start on the scrollbar at the right of Pi's fullscreen transcript, like an editor's overview ruler:
+
+- **Prompts**: `━` in the theme's accent color. A prompt under the thumb shows as an accent `█`.
+- **Replies** (assistant text): `─` in the text color. Replies under the thumb are not shown separately.
+
+Each mark sits at its proportional position in the transcript, so dragging or scrolling the thumb onto a mark brings that message into view. Prompts win when both fall on the same row. Tool output, thinking-only, and tool-call-only assistant turns are not marked.
+
+The marks appear whenever Pi shows the scrollbar. With the default `"fullscreenScrollbar": "auto"`, that is only briefly while scrolling. Set `"fullscreenScrollbar": "always"` in `~/.pi/agent/settings.json` to keep the scrollbar and marks visible.
+
+Limitations:
+
+- Fullscreen TUI mode only (Pi's default `tuiMode`). In regular mode the terminal owns scrollback and the scrollbar, so the extension does nothing. Print, JSON, and RPC modes are unaffected.
+- Pi has no public scrollbar API yet. The extension wraps the transcript `ScrollView`'s scrollbar style callbacks and content render on that one instance, and wraps `UserMessageComponent.render` once per process to tell prompts from replies. It finds message starts from the OSC 133 zone markers Pi already renders. Disabling or reloading restores the original callbacks. Tested against Pi 1.4.0; future Pi versions may change these internals.
+
 ## Development
 
 ```sh
@@ -131,7 +148,7 @@ npm run check
 npm test
 ```
 
-Tests cover cost validation, native cost accumulation, persistence/resume, compaction, path handling, copy/branch preservation, cancellation, aborts, concurrency, and a real Pi runtime handoff with a fake model stream. The runtime test verifies that tool results are copied, `read` and `bash` use the new cwd, destination `AGENTS.md` replaces source context, and the agent continues only after the host finishes switching. Unit tests also cover continuation-submission failures without rolling back the successful switch. Tests do not call a model API or use your credentials.
+Tests cover scrollbar mark detection, scaling, painting, and restoration, cost validation, native cost accumulation, persistence/resume, compaction, path handling, copy/branch preservation, cancellation, aborts, concurrency, and a real Pi runtime handoff with a fake model stream. The runtime test verifies that tool results are copied, `read` and `bash` use the new cwd, destination `AGENTS.md` replaces source context, and the agent continues only after the host finishes switching. Unit tests also cover continuation-submission failures without rolling back the successful switch. Tests do not call a model API or use your credentials.
 
 ```text
 extensions/
@@ -139,10 +156,14 @@ extensions/
     index.ts
   cost/
     index.ts
+  scrollbar-marks/
+    index.ts
+    marks.ts
 tests/
   cd.test.ts
   cost.test.ts
   runtime.test.ts
+  scrollbar-marks.test.ts
 ```
 
 Pi discovers entry points through `pi.extensions` in `package.json`. Add future independent extensions under `extensions/<name>/index.ts`; no new skill or package is needed. Keep helpers inside the extension directory so they are not discovered as standalone extensions.
